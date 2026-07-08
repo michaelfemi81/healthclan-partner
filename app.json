@@ -8,7 +8,11 @@
     "scheme": "healthclanpartner",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "icon": "./assets/expo.icon"
+      "icon": "./assets/expo.icon",
+      "infoPlist": {
+        "NSCameraUsageDescription": "HealthClan Partner uses your camera for video consultations.",
+        "NSMicrophoneUsageDescription": "HealthClan Partner uses your microphone for video consultations."
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -17,7 +21,16 @@
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "permissions": [
+        "CAMERA",
+        "RECORD_AUDIO",
+        "MODIFY_AUDIO_SETTINGS",
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS"
+      ],
+      "predictiveBackGestureEnabled": false,
+      "package": "com.healthclan.partner"
     },
     "web": {
       "output": "static",
@@ -25,6 +38,15 @@
     },
     "plugins": [
       "expo-router",
+      "expo-document-picker",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow HealthClan Partner to use your camera for in-app video consultations.",
+          "microphonePermission": "Allow HealthClan Partner to use your microphone for in-app video consultations.",
+          "recordAudioAndroid": true
+        }
+      ],
       [
         "expo-splash-screen",
         {
@@ -34,11 +56,37 @@
             "imageWidth": 76
           }
         }
+      ],
+      [
+        "expo-navigation-bar",
+        {
+          "enforceContrast": true,
+          "barStyle": "dark",
+          "visibility": "visible"
+        }
+      ],
+      [
+        "@stripe/stripe-react-native",
+        {
+          "merchantIdentifier": "merchant.com.healthclan.partner",
+          "enableGooglePay": true
+        }
       ]
     ],
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "extra": {
+      "router": {},
+      "expo-navigation-bar": {
+        "enforceContrast": true,
+        "barStyle": "dark",
+        "visibility": "visible"
+      },
+      "eas": {
+        "projectId": "b952da05-349c-4b47-be60-cb4db50098e1"
+      }
     }
   }
 }

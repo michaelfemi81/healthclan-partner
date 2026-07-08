@@ -16,5 +16,10 @@
     "**/*.tsx",
     ".expo/types/**/*.ts",
     "expo-env.d.ts"
+  ],
+  "exclude": [
+    "src/native/components/Calendar.tsx",
+    "src/native/components/Loading.tsx",
+    "restored-healthclan-export/**"
   ]
 }
