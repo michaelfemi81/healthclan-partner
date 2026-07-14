@@ -279,19 +279,22 @@ export default function CareRequests() {
               <Text style={styles.readonly}>
                 {loadingCards ? 'Checking saved cards...' : cardSaved ? `${defaultCard.brand || 'Card'} ending ${defaultCard.last4 || '----'}` : 'No saved card found'}
               </Text>
-              <CardEntryForm
-                onSaved={handleCardSaved}
-                onMessage={setReceipt}
-                buttonTitle={cardSaved ? 'Add another card' : 'Save card'}
-              />
+              {!loadingCards && !cardSaved ? (
+                <CardEntryForm
+                  onSaved={handleCardSaved}
+                  onMessage={setReceipt}
+                  buttonTitle="Save card"
+                />
+              ) : null}
+              {cardSaved ? <Text style={styles.savedCardHint}>Add or manage other cards in Settings.</Text> : null}
             </View>
           )}
 
           <View style={styles.actionRow}>
             <TouchableOpacity
-              style={[styles.payButton, selectedUnlocked && styles.paidButton, (((!selectedUnlocked && !cardSaved) || unlocking) && styles.disabledPayButton)]}
+              style={[styles.payButton, selectedUnlocked && styles.paidButton, (((!selectedUnlocked && (!cardSaved || loadingCards)) || unlocking) && styles.disabledPayButton)]}
               onPress={unlockRequest}
-              disabled={unlocking || selectedUnlocked}
+              disabled={unlocking || selectedUnlocked || loadingCards}
             >
               {unlocking ? (
                 <ActivityIndicator color="#fff" />
@@ -363,6 +366,7 @@ const styles = StyleSheet.create({
   paymentTitle: { color: '#252525', fontSize: 13, fontWeight: '900' },
   paymentSubtitle: { color: '#58727A', fontSize: 11, lineHeight: 16, fontWeight: '800', marginTop: 3 },
   cardStatus: { color: grad1, fontSize: 11, fontWeight: '900' },
+  savedCardHint: { color: '#58727A', fontSize: 11, lineHeight: 16, fontWeight: '800', textAlign: 'center' },
   actionRow: { flexDirection: 'row', gap: 10, marginTop: 16 },
   payButton: { flex: 1, minHeight: 50, borderRadius: 16, backgroundColor: grad1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
   paidButton: { backgroundColor: '#11a26f' },
