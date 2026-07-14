@@ -20,7 +20,7 @@ import {
     SafeAreaView
 } from 'react-native-safe-area-context';
 import { partnerApi, setApiToken } from '../lib/api';
-import { currencyForPhoneOption, globalCurrencies } from '../lib/global-options';
+import { currencyForPhoneOption, globalCountries, globalCurrencies } from '../lib/global-options';
 import { isValidEmail, isValidPassword, onlyDigits, parseDob } from '../lib/validation';
 export const IOS = Platform.OS === "ios";
 const grad1 = '#085161'
@@ -40,7 +40,7 @@ const MARITAL_STATUS_OPTIONS: SelectOption[] = [
     { label: 'Prefer not to say', value: 'prefer_not_to_say' },
 ];
 
-const COUNTRY_CODE_OPTIONS: SelectOption[] = [
+const ALL_COUNTRY_CODE_OPTIONS: SelectOption[] = [
     { label: 'Afghanistan (+93)', value: '+93' },
     { label: 'Aland Islands (+358)', value: '+358' },
     { label: 'Albania (+355)', value: '+355' },
@@ -286,6 +286,13 @@ const COUNTRY_CODE_OPTIONS: SelectOption[] = [
     { label: 'Zambia (+260)', value: '+260' },
     { label: 'Zimbabwe (+263)', value: '+263' },
 ];
+
+const ALLOWED_COUNTRY_NAMES = new Set(globalCountries.map(country => country.label));
+ALLOWED_COUNTRY_NAMES.add("Cote d'Ivoire");
+ALLOWED_COUNTRY_NAMES.add('Congo');
+const COUNTRY_CODE_OPTIONS = ALL_COUNTRY_CODE_OPTIONS.filter(option =>
+    ALLOWED_COUNTRY_NAMES.has(option.label.replace(/\s*\([^)]*\)\s*$/, '').trim())
+);
 
 const DATE_PICKER_DAYS = Array.from({ length: 31 }, (_, index) => String(index + 1).padStart(2, '0'));
 const DATE_PICKER_MONTHS = Array.from({ length: 12 }, (_, index) => String(index + 1).padStart(2, '0'));

@@ -45,6 +45,18 @@ function formatDuration(request: any) {
   return `${label}${hours}`;
 }
 
+function detailText(value: unknown, fallback = 'Not provided') {
+  if (Array.isArray(value)) return value.filter(Boolean).join(', ') || fallback;
+  if (value && typeof value === 'object') {
+    return Object.values(value as Record<string, unknown>).filter(item => typeof item === 'string' && item.trim()).join(', ') || fallback;
+  }
+  return String(value || '').trim() || fallback;
+}
+
+function requestName(request: any) {
+  return request?.patientName || request?.careRecipient?.name || request?.contact?.name || 'HealthClan patient';
+}
+
 export default function CareRequests() {
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
@@ -63,7 +75,7 @@ export default function CareRequests() {
     [careRequests],
   );
   const selected = selectedId ? careRequests.find(request => request._id === selectedId) : null;
-  const selectedUnlocked = paidRequestIds.includes(selected?._id);
+  const selectedUnlocked = Boolean(selected?.contactUnlocked || paidRequestIds.includes(selected?._id));
   const defaultCard = cards.find(card => card.isDefault) || cards[0];
   const cardSaved = Boolean(defaultCard);
 
@@ -195,7 +207,7 @@ export default function CareRequests() {
             <ApiStateCard icon="heart-outline" title="No open care requests" message="When patients submit care support requests, they will appear here from the backend." />
           ) : sortedCareRequests.map(request => {
             const active = request._id === selectedId;
-            const unlocked = paidRequestIds.includes(request._id);
+            const unlocked = Boolean(request.contactUnlocked || paidRequestIds.includes(request._id));
             const status = unlocked ? 'Contact unlocked' : 'Contact locked';
 
             return (
@@ -210,7 +222,7 @@ export default function CareRequests() {
                     <Ionicons name={unlocked ? 'people-outline' : 'lock-closed-outline'} size={20} color={grad1} />
                   </View>
                   <View style={styles.requestText}>
-                    <Text style={styles.client}>{request.patientName || request.careRecipient?.name || 'Care request'}</Text>
+                    <Text style={styles.client}>{requestName(request)}</Text>
                     <Text style={styles.service}>{request.careType || request.serviceType || 'Home care support'}</Text>
                     <Text style={styles.visibleMeta}>{formatPreferredDate(request)}</Text>
                     <Text style={styles.visibleMeta}>Duration: {formatDuration(request)}</Text>
@@ -240,21 +252,27 @@ export default function CareRequests() {
           )}
 
           <Text style={styles.label}>Client</Text>
-          <Text style={styles.readonly}>{selected?.patientName || selected?.careRecipient?.name || 'Care request'}</Text>
+          <Text style={styles.readonly}>{requestName(selected)}</Text>
+          <Text style={styles.label}>Care type</Text>
+          <Text style={styles.readonly}>{detailText(selected?.careType || selected?.serviceType).replace(/_/g, ' ')}</Text>
           <Text style={styles.label}>Preferred date</Text>
           <Text style={styles.readonly}>{formatPreferredDate(selected)}</Text>
           <Text style={styles.label}>Duration</Text>
           <Text style={styles.readonly}>{formatDuration(selected)}</Text>
           <Text style={styles.label}>Date of birth</Text>
-          <Text style={styles.readonly}>{selected?.dateOfBirth || 'Not provided'}</Text>
+          <Text style={styles.readonly}>{detailText(selected?.dateOfBirth)}</Text>
           <Text style={styles.label}>Gender at birth</Text>
           <Text style={styles.readonly}>{selected?.genderAtBirth ? String(selected.genderAtBirth).replace(/_/g, ' ') : 'Not provided'}</Text>
           <Text style={styles.label}>Chronic illnesses</Text>
-          <Text style={styles.readonly}>{selected?.chronicIllnesses || 'None provided'}</Text>
+          <Text style={styles.readonly}>{detailText(selected?.chronicIllnesses, 'None provided')}</Text>
           <Text style={styles.label}>Chronic medication</Text>
-          <Text style={styles.readonly}>{selected?.chronicMedication || 'None provided'}</Text>
+          <Text style={styles.readonly}>{detailText(selected?.chronicMedication, 'None provided')}</Text>
           <Text style={styles.label}>Allergies</Text>
-          <Text style={styles.readonly}>{selected?.allergies || 'None provided'}</Text>
+          <Text style={styles.readonly}>{detailText(selected?.allergies, 'None provided')}</Text>
+          <Text style={styles.label}>Care location</Text>
+          <Text style={styles.readonly}>{detailText(selected?.location)}</Text>
+          <Text style={styles.label}>Care notes</Text>
+          <Text style={styles.readonly}>{detailText(selected?.notes || selected?.description)}</Text>
           <Text style={styles.label}>Medical consent</Text>
           <Text style={styles.readonly}>{selected?.medicalConsent?.accepted ? selected.medicalConsent.text || 'Consent accepted' : 'Consent not recorded'}</Text>
           <Text style={styles.label}>Requester</Text>

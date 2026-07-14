@@ -268,7 +268,7 @@ export default function SignIn() {
                             You may manage certain permissions through your device settings.
                         </Text>
                         <Text style={styles.wel}>
-                            9. Children's Privacy
+                            9. Children&apos;s Privacy
                         </Text>
                         <Text style={styles.sub}>
                             Our services are not intended for children without parent or guardian involvement where required by law. We do not knowingly collect data unlawfully from minors.
