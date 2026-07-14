@@ -4,6 +4,7 @@ import { Stack } from 'expo-router';
 import { useEffect } from 'react';
 import { Platform, StatusBar, View } from 'react-native';
 import { SafeAreaProvider } from "react-native-safe-area-context";
+import { StripeRoot } from '../components/StripeRoot';
 import { SessionProvider, useSession } from '../constants/ctx';
 import { useOfflineSync } from '../hooks/use-offline-sync';
 import SplashScreenController from './splash';
@@ -56,12 +57,14 @@ export default function Root() {
                     zIndex: 1,
                 }}
             />
-            <SessionProvider>
-                <SplashScreenController />
-                <SafeAreaProvider style={{ flex: 1 }}>
-                    <RootNavigator />
-                </SafeAreaProvider>
-            </SessionProvider>
+            <StripeRoot>
+                <SessionProvider>
+                    <SplashScreenController />
+                    <SafeAreaProvider style={{ flex: 1 }}>
+                        <RootNavigator />
+                    </SafeAreaProvider>
+                </SessionProvider>
+            </StripeRoot>
         </View>
     );
 }

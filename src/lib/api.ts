@@ -327,11 +327,14 @@ export const partnerApi = {
       body: { paymentId },
     }),
   createCardSetupIntent: () =>
-    apiRequest<{ setupIntentId?: string; clientSecret: string }>('/payments/cards/setup-intent', { method: 'POST' }),
+    apiRequest<{ setupIntentId?: string; clientSecret: string }>('/payments/cards/setup-intent', {
+      method: 'POST',
+      offlineQueue: false,
+    }),
   saveCard: (body: Record<string, unknown>) =>
-    apiRequest<any>('/payments/cards', { method: 'POST', body }),
+    apiRequest<any>('/payments/cards', { method: 'POST', body, offlineQueue: false }),
   chargeSavedCard: (body: Record<string, unknown>) =>
-    apiRequest<any>('/payments/cards/charge', { method: 'POST', body }),
+    apiRequest<any>('/payments/cards/charge', { method: 'POST', body, offlineQueue: false }),
   cards: () => apiRequest<any[]>('/payments/cards'),
   bankAccounts: () => apiRequest<any[]>('/payments/bank-accounts'),
   saveBankAccount: (body: Record<string, unknown>) =>

@@ -89,7 +89,7 @@ export default function CareRequests() {
     setCards(Array.isArray(latestCards) ? latestCards : []);
     emitPartnerRefresh('cards', 'card-saved', latestCards);
     emitPartnerRefresh('payments', 'card-saved', latestCards);
-    setReceipt('Card verified by Stripe and saved. You can now unlock care patient information.');
+    setReceipt('Card verified by Stripe and saved. You can now unlock requester phone and email.');
   };
 
   const unlockRequest = async () => {
@@ -106,7 +106,7 @@ export default function CareRequests() {
     }
 
     if (!defaultCard?._id) {
-      setReceipt('Add a saved card first, then pay only to unlock the care patient information you want.');
+      setReceipt('Add a saved card first, then pay only to unlock the requester phone and email.');
       return;
     }
 
@@ -127,7 +127,7 @@ export default function CareRequests() {
 
       setCareRequests(current => current.map(request => request._id === selected._id ? { ...request, ...unlocked } : request));
       setPaidRequestIds(current => [...new Set([...current, selected._id])]);
-      setReceipt('Payment successful. Care patient information unlocked.');
+      setReceipt('Payment successful. Requester phone and email unlocked.');
       emitPartnerRefresh('careRequests', 'care-request-unlocked', unlocked);
       emitPartnerRefresh('payments', 'care-request-unlocked', payment);
       emitPartnerRefresh('notifications', 'care-request-unlocked', unlocked);
@@ -196,7 +196,7 @@ export default function CareRequests() {
           ) : sortedCareRequests.map(request => {
             const active = request._id === selectedId;
             const unlocked = paidRequestIds.includes(request._id);
-            const status = unlocked ? 'Unlocked' : 'Locked';
+            const status = unlocked ? 'Contact unlocked' : 'Contact locked';
 
             return (
               <TouchableOpacity
@@ -210,14 +210,7 @@ export default function CareRequests() {
                     <Ionicons name={unlocked ? 'people-outline' : 'lock-closed-outline'} size={20} color={grad1} />
                   </View>
                   <View style={styles.requestText}>
-                    {unlocked ? (
-                      <Text style={styles.client}>{request.patientName || request.careRecipient?.name || 'Care request'}</Text>
-                    ) : (
-                      <View style={styles.blurredName}>
-                        <View style={[styles.blurBar, { width: '72%' }]} />
-                        <View style={[styles.blurBar, { width: '46%' }]} />
-                      </View>
-                    )}
+                    <Text style={styles.client}>{request.patientName || request.careRecipient?.name || 'Care request'}</Text>
                     <Text style={styles.service}>{request.careType || request.serviceType || 'Home care support'}</Text>
                     <Text style={styles.visibleMeta}>{formatPreferredDate(request)}</Text>
                     <Text style={styles.visibleMeta}>Duration: {formatDuration(request)}</Text>
@@ -242,30 +235,30 @@ export default function CareRequests() {
           {!selectedUnlocked && (
             <View style={styles.lockNotice}>
               <Ionicons name="lock-closed-outline" size={19} color={grad1} />
-              <Text style={styles.lockNoticeText}>{loadingSelected ? 'Opening care request...' : 'Care patient information is hidden. Add a card and pay only if you want to unlock this lead.'}</Text>
+              <Text style={styles.lockNoticeText}>{loadingSelected ? 'Opening care request...' : 'Requester phone and email are hidden. Add a card and pay only when you want to contact this requester.'}</Text>
             </View>
           )}
 
           <Text style={styles.label}>Client</Text>
-          <LockedValue value={selected?.patientName || selected?.careRecipient?.name || 'Care request'} unlocked={selectedUnlocked} />
+          <Text style={styles.readonly}>{selected?.patientName || selected?.careRecipient?.name || 'Care request'}</Text>
           <Text style={styles.label}>Preferred date</Text>
           <Text style={styles.readonly}>{formatPreferredDate(selected)}</Text>
           <Text style={styles.label}>Duration</Text>
           <Text style={styles.readonly}>{formatDuration(selected)}</Text>
           <Text style={styles.label}>Date of birth</Text>
-          <LockedValue value={selected?.dateOfBirth || 'Hidden'} unlocked={selectedUnlocked} />
+          <Text style={styles.readonly}>{selected?.dateOfBirth || 'Not provided'}</Text>
           <Text style={styles.label}>Gender at birth</Text>
-          <LockedValue value={selected?.genderAtBirth ? String(selected.genderAtBirth).replace(/_/g, ' ') : 'Hidden'} unlocked={selectedUnlocked} />
+          <Text style={styles.readonly}>{selected?.genderAtBirth ? String(selected.genderAtBirth).replace(/_/g, ' ') : 'Not provided'}</Text>
           <Text style={styles.label}>Chronic illnesses</Text>
-          <LockedValue value={selected?.chronicIllnesses || 'None provided'} unlocked={selectedUnlocked} />
+          <Text style={styles.readonly}>{selected?.chronicIllnesses || 'None provided'}</Text>
           <Text style={styles.label}>Chronic medication</Text>
-          <LockedValue value={selected?.chronicMedication || 'None provided'} unlocked={selectedUnlocked} />
+          <Text style={styles.readonly}>{selected?.chronicMedication || 'None provided'}</Text>
           <Text style={styles.label}>Allergies</Text>
-          <LockedValue value={selected?.allergies || 'None provided'} unlocked={selectedUnlocked} />
+          <Text style={styles.readonly}>{selected?.allergies || 'None provided'}</Text>
           <Text style={styles.label}>Medical consent</Text>
-          <LockedValue value={selected?.medicalConsent?.accepted ? selected.medicalConsent.text || 'Consent accepted' : 'Consent not recorded'} unlocked={selectedUnlocked} />
+          <Text style={styles.readonly}>{selected?.medicalConsent?.accepted ? selected.medicalConsent.text || 'Consent accepted' : 'Consent not recorded'}</Text>
           <Text style={styles.label}>Requester</Text>
-          <LockedValue value={selected?.contact?.name || 'Requester'} unlocked={selectedUnlocked} />
+          <Text style={styles.readonly}>{selected?.contact?.name || 'Requester'}</Text>
           <Text style={styles.label}>Requester phone</Text>
           <LockedValue value={selected?.contact?.phone || 'Hidden'} unlocked={selectedUnlocked} />
           <Text style={styles.label}>Requester email</Text>
@@ -279,7 +272,7 @@ export default function CareRequests() {
                 </View>
                 <View style={styles.paymentText}>
                   <Text style={styles.paymentTitle}>{cardSaved ? 'Payment card ready' : 'Add payment card'}</Text>
-                  <Text style={styles.paymentSubtitle}>{cardSaved ? 'Card will be charged only for this selected information unlock' : 'Required before unlocking care patient information'}</Text>
+                  <Text style={styles.paymentSubtitle}>{cardSaved ? 'Card will be charged only when you unlock this requester’s contact details' : 'Required before unlocking requester phone and email'}</Text>
                 </View>
                 <Text style={styles.cardStatus}>{cardSaved ? 'Saved' : 'Needed'}</Text>
               </View>
@@ -305,7 +298,7 @@ export default function CareRequests() {
               ) : (
                 <Ionicons name={selectedUnlocked ? 'checkmark-circle-outline' : 'card-outline'} size={18} color="#fff" />
               )}
-              <Text style={styles.payText}>{unlocking ? 'Unlocking information' : selectedUnlocked ? 'Information unlocked' : cardSaved ? 'Pay to unlock' : 'Add card to unlock'}</Text>
+              <Text style={styles.payText}>{unlocking ? 'Unlocking contact' : selectedUnlocked ? 'Contact unlocked' : cardSaved ? 'Pay to unlock contact' : 'Add card to unlock contact'}</Text>
             </TouchableOpacity>
           </View>
 
