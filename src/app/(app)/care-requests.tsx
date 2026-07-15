@@ -57,6 +57,19 @@ function requestName(request: any) {
   return request?.patientName || request?.careRecipient?.name || request?.contact?.name || 'HealthClan patient';
 }
 
+function formatChoice(value: unknown, fallback = 'Not provided') {
+  const text = detailText(value, fallback);
+  return text === fallback ? text : text.replace(/_/g, ' ').replace(/\b\w/g, character => character.toUpperCase());
+}
+
+function formatBudget(request: any) {
+  const budget = request?.budget;
+  if (!budget || (budget.min == null && budget.max == null)) return 'Not provided';
+  const currency = budget.currency || '';
+  if (budget.min != null && budget.max != null) return `${currency} ${budget.min} – ${budget.max}`.trim();
+  return `${currency} ${budget.min ?? budget.max}`.trim();
+}
+
 export default function CareRequests() {
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
@@ -254,8 +267,12 @@ export default function CareRequests() {
 
           <Text style={styles.label}>Client</Text>
           <Text style={styles.readonly}>{requestName(selected)}</Text>
+          <Text style={styles.label}>Care requested for</Text>
+          <Text style={styles.readonly}>{formatChoice(selected?.careFor)}</Text>
           <Text style={styles.label}>Care type</Text>
-          <Text style={styles.readonly}>{detailText(selected?.careType || selected?.serviceType).replace(/_/g, ' ')}</Text>
+          <Text style={styles.readonly}>{formatChoice(selected?.careType || selected?.serviceType)}</Text>
+          <Text style={styles.label}>Urgency</Text>
+          <Text style={styles.readonly}>{formatChoice(selected?.urgency)}</Text>
           <Text style={styles.label}>Preferred date</Text>
           <Text style={styles.readonly}>{formatPreferredDate(selected)}</Text>
           <Text style={styles.label}>Duration</Text>
@@ -266,12 +283,18 @@ export default function CareRequests() {
           <Text style={styles.readonly}>{detailText(selected?.dateOfBirth)}</Text>
           <Text style={styles.label}>Chronic illnesses</Text>
           <Text style={styles.readonly}>{detailText(selected?.chronicIllnesses, 'None provided')}</Text>
+          <Text style={styles.label}>Start and end time</Text>
+          <Text style={styles.readonly}>{selected?.startTime || selected?.endTime ? [selected.startTime, selected.endTime].filter(Boolean).join(' – ') : 'Not provided'}</Text>
           <Text style={styles.label}>Care location</Text>
           <Text style={styles.readonly}>{detailText(selected?.location)}</Text>
+          <Text style={styles.label}>Budget</Text>
+          <Text style={styles.readonly}>{formatBudget(selected)}</Text>
           <Text style={styles.label}>Care notes</Text>
           <Text style={styles.readonly}>{detailText(selected?.notes || selected?.description)}</Text>
           <Text style={styles.label}>Requester</Text>
           <Text style={styles.readonly}>{selected?.contact?.name || 'Requester'}</Text>
+          <Text style={styles.label}>Preferred contact method</Text>
+          <Text style={styles.readonly}>{formatChoice(selected?.contact?.preferredMethod)}</Text>
           <Text style={styles.label}>Requester phone</Text>
           <LockedValue value={selected?.contact?.phone || 'Hidden'} unlocked={selectedUnlocked} />
           <Text style={styles.label}>Requester email</Text>
