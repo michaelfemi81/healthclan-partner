@@ -226,6 +226,7 @@ export default function CareRequests() {
                     <Text style={styles.service}>{request.careType || request.serviceType || 'Home care support'}</Text>
                     <Text style={styles.visibleMeta}>{formatPreferredDate(request)}</Text>
                     <Text style={styles.visibleMeta}>Duration: {formatDuration(request)}</Text>
+                    <Text style={styles.visibleMeta}>{request.daysPerWeek ? `${request.daysPerWeek} day${Number(request.daysPerWeek) === 1 ? '' : 's'} per week` : 'Days per week not specified'}</Text>
                   </View>
                   <Text style={styles.amount}>Unlock</Text>
                 </View>
@@ -259,22 +260,16 @@ export default function CareRequests() {
           <Text style={styles.readonly}>{formatPreferredDate(selected)}</Text>
           <Text style={styles.label}>Duration</Text>
           <Text style={styles.readonly}>{formatDuration(selected)}</Text>
+          <Text style={styles.label}>Number of days per week</Text>
+          <Text style={styles.readonly}>{selected?.daysPerWeek ? `${selected.daysPerWeek} day${Number(selected.daysPerWeek) === 1 ? '' : 's'} per week` : 'Not specified'}</Text>
           <Text style={styles.label}>Date of birth</Text>
           <Text style={styles.readonly}>{detailText(selected?.dateOfBirth)}</Text>
-          <Text style={styles.label}>Gender at birth</Text>
-          <Text style={styles.readonly}>{selected?.genderAtBirth ? String(selected.genderAtBirth).replace(/_/g, ' ') : 'Not provided'}</Text>
           <Text style={styles.label}>Chronic illnesses</Text>
           <Text style={styles.readonly}>{detailText(selected?.chronicIllnesses, 'None provided')}</Text>
-          <Text style={styles.label}>Chronic medication</Text>
-          <Text style={styles.readonly}>{detailText(selected?.chronicMedication, 'None provided')}</Text>
-          <Text style={styles.label}>Allergies</Text>
-          <Text style={styles.readonly}>{detailText(selected?.allergies, 'None provided')}</Text>
           <Text style={styles.label}>Care location</Text>
           <Text style={styles.readonly}>{detailText(selected?.location)}</Text>
           <Text style={styles.label}>Care notes</Text>
           <Text style={styles.readonly}>{detailText(selected?.notes || selected?.description)}</Text>
-          <Text style={styles.label}>Medical consent</Text>
-          <Text style={styles.readonly}>{selected?.medicalConsent?.accepted ? selected.medicalConsent.text || 'Consent accepted' : 'Consent not recorded'}</Text>
           <Text style={styles.label}>Requester</Text>
           <Text style={styles.readonly}>{selected?.contact?.name || 'Requester'}</Text>
           <Text style={styles.label}>Requester phone</Text>
