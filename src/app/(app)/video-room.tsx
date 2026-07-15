@@ -4,7 +4,7 @@ import { CameraView, useCameraPermissions, useMicrophonePermissions } from 'expo
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, useLocalSearchParams, useNavigation } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Linking, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Image, Linking, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { WebView } from 'react-native-webview';
 import { ApiStateCard } from '../../components/api-state';
@@ -397,6 +397,7 @@ export default function VideoRoom() {
   const [notice, setNotice] = useState('');
   const [notesByVisit, setNotesByVisit] = useState<Record<string, string>>({});
   const [uploadingType, setUploadingType] = useState<AppointmentDocumentType | ''>('');
+  const [selectedDocuments, setSelectedDocuments] = useState<Partial<Record<AppointmentDocumentType, { uri: string; name: string; type: string; size?: number; file?: unknown }>>>({});
   const roomRef = useRef<any>(null);
   const roomWebViewRef = useRef<any>(null);
   const previewStreamRef = useRef<any>(null);
@@ -957,7 +958,7 @@ export default function VideoRoom() {
             }
   }
 
-  async function chooseAndUpload(documentType: AppointmentDocumentType) {
+  async function chooseDocument(documentType: AppointmentDocumentType) {
     if (!activeVisitId || uploadingType) return;
     if (!canEditNotes) {
       setNotice('Documents can be uploaded after the appointment is confirmed, including after consultation.');
@@ -980,11 +981,21 @@ export default function VideoRoom() {
         setNotice('Appointment documents must be 5MB or smaller.');
         return;
       }
+      setSelectedDocuments(current => ({ ...current, [documentType]: { uri: asset.uri, name: asset.name, type, size: asset.size, file: asset.file } }));
+      setNotice(`${appointmentDocumentTypes.find(item => item.value === documentType)?.label} selected. Preview it, then tap Upload.`);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : 'Unable to choose appointment document.');
+    }
+  }
+
+  async function uploadDocument(documentType: AppointmentDocumentType) {
+    const selected = selectedDocuments[documentType];
+    if (!selected || !activeVisitId || uploadingType) return;
+    try {
       setUploadingType(documentType);
-      const savedAppointment = await partnerApi.uploadAppointmentDocument(activeVisitId, documentType, {
-        uri: asset.uri, name: asset.name, type, size: asset.size, file: asset.file,
-      });
+      const savedAppointment = await partnerApi.uploadAppointmentDocument(activeVisitId, documentType, selected);
       setVideoVisits(current => current.map(visit => visit._id === activeVisitId ? { ...visit, ...savedAppointment } : visit));
+      setSelectedDocuments(current => ({ ...current, [documentType]: undefined }));
       setNotice(`${appointmentDocumentTypes.find(item => item.value === documentType)?.label} uploaded.`);
       emitPartnerRefresh('appointments', 'appointment-document-uploaded', savedAppointment);
       emitPartnerRefresh('notifications', 'appointment-document-uploaded', savedAppointment);
@@ -1118,50 +1129,27 @@ export default function VideoRoom() {
 
         {!fullscreen && (
           <>
-            <View style={styles.notesHeader}>
-              <Text style={styles.sectionTitle}>{canEditNotes ? 'Consultation notes' : 'Consultation note history'}</Text>
-              {savedNoteId === activeVisitId && <Text style={styles.savedText}>Saved</Text>}
-            </View>
-            {!activeVisit ? (
-              <ApiStateCard icon="document-text-outline" title="No appointment selected" message="Open a consultation before writing notes." />
-            ) : (
-              <TextInput
-                style={[styles.notes, !canEditNotes && styles.notesReadonly]}
-                value={notes || (!canEditNotes ? 'No consultation notes saved for this appointment yet.' : '')}
-                onChangeText={value => {
-                  setSavedNoteId('');
-                  setNotesByVisit(current => ({ ...current, [activeVisitId]: value }));
-                }}
-                multiline
-                editable={canEditNotes}
-                textAlignVertical="top"
-                placeholder="Write diagnosis, medication plan, next steps, and follow-up instructions"
-              />
-            )}
-            {canEditNotes && (
-              <TouchableOpacity
-                style={[styles.saveButton, (!approved || !activeVisitId) && styles.buttonDisabled]}
-                onPress={saveNotes}
-                disabled={savingNote || !activeVisitId}
-              >
-                {savingNote ? (
-                  <ActivityIndicator color="#fff" />
-                ) : (
-                  <Ionicons name={savedNoteId === activeVisitId ? 'checkmark-circle' : 'save-outline'} size={18} color="#fff" />
-                )}
-                <Text style={styles.saveText}>{savingNote ? 'Saving notes' : !approved ? 'Verification required' : savedNoteId === activeVisitId ? 'Notes saved' : 'Save post-consult notes'}</Text>
-              </TouchableOpacity>
-            )}
             {activeVisit && (
               <View style={styles.documentsSection}>
-                <Text style={styles.sectionTitle}>Appointment documents</Text>
-                <Text style={styles.documentHelp}>Upload an image or PDF during or after the consultation.</Text>
-                {appointmentDocumentTypes.map(item => (
-                  <TouchableOpacity key={item.value} style={[styles.documentButton, !!uploadingType && styles.buttonDisabled]} onPress={() => chooseAndUpload(item.value)} disabled={!!uploadingType}>
-                    {uploadingType === item.value ? <ActivityIndicator color={grad1} /> : <Ionicons name="cloud-upload-outline" size={19} color={grad1} />}
-                    <Text style={styles.documentButtonText}>{item.label}</Text>
-                  </TouchableOpacity>
-                ))}
+                <View style={styles.sectionHeadingRow}><View><Text style={styles.sectionTitle}>Appointment documents</Text><Text style={styles.documentHelp}>Choose, preview and upload an image or PDF.</Text></View><View style={styles.secureBadge}><Ionicons name="shield-checkmark-outline" size={15} color={grad1} /><Text style={styles.secureText}>Secure</Text></View></View>
+                <View style={styles.documentGrid}>{appointmentDocumentTypes.map(item => {
+                  const selected = selectedDocuments[item.value];
+                  return (
+                    <View key={item.value} style={styles.documentCard}>
+                      <View style={styles.documentCardTop}><View style={styles.documentIcon}><Ionicons name="document-attach-outline" size={20} color={grad1} /></View><Text style={styles.documentCardTitle}>{item.label}</Text></View>
+                      {selected ? (
+                        <View style={styles.previewBox}>
+                          {selected.type.startsWith('image/') ? <Image source={{ uri: selected.uri }} style={styles.previewImage} resizeMode="cover" /> : <Ionicons name="document-text-outline" size={42} color={grad1} />}
+                          <Text style={styles.previewName} numberOfLines={1}>{selected.name}</Text>
+                        </View>
+                      ) : <Text style={styles.emptyPreview}>JPG, PNG, WEBP or PDF · Max 5 MB</Text>}
+                      <View style={styles.documentActions}>
+                        <TouchableOpacity style={styles.chooseButton} onPress={() => chooseDocument(item.value)} disabled={!!uploadingType}><Ionicons name="folder-open-outline" size={17} color={grad1} /><Text style={styles.chooseText}>{selected ? 'Change' : 'Choose file'}</Text></TouchableOpacity>
+                        {selected && <TouchableOpacity style={styles.uploadButton} onPress={() => uploadDocument(item.value)} disabled={!!uploadingType}>{uploadingType === item.value ? <ActivityIndicator color="#fff" /> : <Ionicons name="cloud-upload-outline" size={17} color="#fff" />}<Text style={styles.uploadText}>Upload</Text></TouchableOpacity>}
+                      </View>
+                    </View>
+                  );
+                })}</View>
                 {(activeVisit.clinicalDocuments || []).map((document: any) => (
                   <TouchableOpacity key={document._id || document.fileUrl} style={styles.uploadedDocument} onPress={() => Linking.openURL(document.fileUrl)}>
                     <Ionicons name={document.mimeType === 'application/pdf' ? 'document-text-outline' : 'image-outline'} size={19} color={grad1} />
@@ -1174,6 +1162,11 @@ export default function VideoRoom() {
                 ))}
               </View>
             )}
+            <View style={styles.notesSection}>
+              <View style={styles.notesHeader}><Text style={styles.sectionTitle}>{canEditNotes ? 'Consultation notes' : 'Consultation note history'}</Text>{savedNoteId === activeVisitId && <Text style={styles.savedText}>Saved</Text>}</View>
+              {!activeVisit ? <ApiStateCard icon="document-text-outline" title="No appointment selected" message="Open a consultation before writing notes." /> : <TextInput style={[styles.notes, !canEditNotes && styles.notesReadonly]} value={notes || (!canEditNotes ? 'No consultation notes saved for this appointment yet.' : '')} onChangeText={value => { setSavedNoteId(''); setNotesByVisit(current => ({ ...current, [activeVisitId]: value })); }} multiline editable={canEditNotes} textAlignVertical="top" placeholder="Write diagnosis, medication plan, next steps, and follow-up instructions" />}
+              {canEditNotes && <TouchableOpacity style={[styles.saveButton, (!approved || !activeVisitId) && styles.buttonDisabled]} onPress={saveNotes} disabled={savingNote || !activeVisitId}>{savingNote ? <ActivityIndicator color="#fff" /> : <Ionicons name={savedNoteId === activeVisitId ? 'checkmark-circle' : 'save-outline'} size={18} color="#fff" />}<Text style={styles.saveText}>{savingNote ? 'Saving notes' : !approved ? 'Verification required' : savedNoteId === activeVisitId ? 'Notes saved' : 'Save consultation notes'}</Text></TouchableOpacity>}
+            </View>
           </>
         )}
       </ScrollView>
@@ -1279,7 +1272,25 @@ const styles = StyleSheet.create({
   saveButton: { minHeight: 50, borderRadius: 16, backgroundColor: grad1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 12 },
   buttonDisabled: { opacity: 0.58 },
   saveText: { color: '#fff', fontSize: 15, fontWeight: '900' },
-  documentsSection: { marginTop: 20, gap: 9, borderTopWidth: 1, borderTopColor: 'rgba(8,81,97,0.1)', paddingTop: 4 },
+  documentsSection: { marginTop: 20, gap: 14, borderRadius: 22, backgroundColor: '#fff', padding: 18, borderWidth: 1, borderColor: 'rgba(8,81,97,0.1)' },
+  sectionHeadingRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 },
+  secureBadge: { flexDirection: 'row', alignItems: 'center', gap: 5, borderRadius: 999, backgroundColor: 'rgba(19,162,193,0.1)', paddingHorizontal: 10, paddingVertical: 7 },
+  secureText: { color: grad1, fontSize: 11, fontWeight: '900' },
+  documentGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
+  documentCard: { flexGrow: 1, flexBasis: 280, borderRadius: 18, backgroundColor: '#F7FBFE', padding: 14, borderWidth: 1, borderColor: 'rgba(8,81,97,0.1)', gap: 12 },
+  documentCardTop: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  documentIcon: { width: 38, height: 38, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(19,162,193,0.11)' },
+  documentCardTitle: { flex: 1, color: '#253D43', fontSize: 14, fontWeight: '900' },
+  previewBox: { minHeight: 126, borderRadius: 14, overflow: 'hidden', backgroundColor: '#E9F6FE', alignItems: 'center', justifyContent: 'center', padding: 10, gap: 8 },
+  previewImage: { width: '100%', height: 104, borderRadius: 10 },
+  previewName: { width: '100%', color: '#253D43', fontSize: 11, fontWeight: '800', textAlign: 'center' },
+  emptyPreview: { minHeight: 70, color: '#6B858C', fontSize: 11, lineHeight: 17, fontWeight: '700', textAlign: 'center', textAlignVertical: 'center' },
+  documentActions: { flexDirection: 'row', gap: 8 },
+  chooseButton: { flex: 1, minHeight: 42, borderRadius: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, backgroundColor: '#fff', borderWidth: 1, borderColor: 'rgba(8,81,97,0.18)' },
+  chooseText: { color: grad1, fontSize: 12, fontWeight: '900' },
+  uploadButton: { flex: 1, minHeight: 42, borderRadius: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, backgroundColor: grad1 },
+  uploadText: { color: '#fff', fontSize: 12, fontWeight: '900' },
+  notesSection: { marginTop: 20, marginBottom: 12, borderRadius: 22, backgroundColor: 'rgba(255,255,255,0.45)', padding: 2 },
   documentHelp: { color: '#58727A', fontSize: 12, lineHeight: 17, fontWeight: '700', marginBottom: 3 },
   documentButton: { minHeight: 48, borderRadius: 14, paddingHorizontal: 13, flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: '#fff', borderWidth: 1, borderColor: 'rgba(8,81,97,0.14)' },
   documentButtonText: { flex: 1, color: '#253D43', fontSize: 13, fontWeight: '900' },
