@@ -45,6 +45,8 @@ export type UploadableFile = {
   file?: unknown;
 };
 
+export type AppointmentDocumentType = 'prescription' | 'sick_note' | 'attendance_note' | 'referral_note';
+
 export async function getApiToken() {
   if (Platform.OS !== 'web') {
     return SecureStore.getItemAsync(TOKEN_KEY);
@@ -213,6 +215,43 @@ export async function uploadVerificationDocument(
   return payload?.data;
 }
 
+export async function uploadAppointmentDocument(
+  appointmentId: string,
+  documentType: AppointmentDocumentType,
+  file: UploadableFile,
+) {
+  const token = await readToken();
+  const headers: Record<string, string> = { Accept: 'application/json' };
+  if (token) headers.Authorization = `Bearer ${token}`;
+  const url = `${API_BASE_URL}/doctors/appointments/${encodeURIComponent(appointmentId)}/documents`;
+
+  if (Platform.OS !== 'web' && file.uri) {
+    const result = await FileSystem.uploadAsync(url, file.uri, {
+      fieldName: 'document',
+      httpMethod: 'POST',
+      mimeType: file.type,
+      parameters: { documentType },
+      uploadType: FileSystem.FileSystemUploadType.MULTIPART,
+      headers,
+    });
+    const payload = JSON.parse(result.body || '{}');
+    if (result.status < 200 || result.status >= 300 || payload?.success === false) {
+      throw new Error(payload?.message || 'Unable to upload appointment document.');
+    }
+    return payload?.data;
+  }
+
+  const form = new FormData();
+  form.append('documentType', documentType);
+  form.append('document', file.file as Blob, file.name);
+  const response = await fetch(url, { method: 'POST', headers, body: form });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok || payload?.success === false) {
+    throw new Error(payload?.message || 'Unable to upload appointment document.');
+  }
+  return payload?.data;
+}
+
 export const partnerApi = {
   auth: {
     register: (body: {
@@ -270,6 +309,7 @@ export const partnerApi = {
   doctorProfile: (body: Record<string, unknown>, token?: string | null) =>
     apiRequest<any>('/users/doctor-profile', { method: 'PUT', body, token }),
   uploadVerificationDocument,
+  uploadAppointmentDocument,
   preferences: () => apiRequest<any>('/users/preferences'),
   savePreferences: (body: Record<string, unknown>, token?: string | null) =>
     apiRequest<any>('/users/preferences', { method: 'PUT', body, token }),

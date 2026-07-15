@@ -1,16 +1,23 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
+import * as DocumentPicker from 'expo-document-picker';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, useLocalSearchParams, useNavigation } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, useWindowDimensions } from 'react-native';
+import { ActivityIndicator, Linking, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ApiStateCard } from '../../components/api-state';
 import { useDoctorVerification } from '../../contexts/doctor-verification';
 import { emitPartnerRefresh, subscribePartnerRefresh } from '../../lib/app-events';
-import { partnerApi } from '../../lib/api';
+import { AppointmentDocumentType, partnerApi } from '../../lib/api';
 
 const grad1 = '#085161';
 const grad2 = '#11a2c1';
+const appointmentDocumentTypes: { value: AppointmentDocumentType; label: string }[] = [
+  { value: 'prescription', label: "Doctor's Prescription" },
+  { value: 'sick_note', label: 'Sick note' },
+  { value: 'attendance_note', label: 'Attendance note' },
+  { value: 'referral_note', label: 'Referral note' },
+];
 
 function appointmentTimestamp(appointment: any) {
   const raw = appointment?.startTime || appointment?.scheduledAt || appointment?.appointmentDate || appointment?.date || appointment?.createdAt;
@@ -62,6 +69,7 @@ export default function Consultations() {
   const [savingNote, setSavingNote] = useState(false);
   const [savedNoteId, setSavedNoteId] = useState('');
   const [notesByVisit, setNotesByVisit] = useState<Record<string, string>>({});
+  const [uploadingType, setUploadingType] = useState<AppointmentDocumentType | ''>('');
   const isWide = Platform.OS === 'web' && width >= 900;
 
   useEffect(() => {
@@ -137,6 +145,54 @@ export default function Consultations() {
 
   function openVideoRoom(appointment: any) {
     router.push({ pathname: '/video-room', params: { appointmentId: appointment._id } } as any);
+  }
+
+  async function chooseAndUpload(documentType: AppointmentDocumentType) {
+    if (!activeVisitId || uploadingType) return;
+    if (!approved) {
+      setNotice('Admin verification is required before uploading appointment documents.');
+      return;
+    }
+    if (!['confirmed', 'completed'].includes(activeVisit?.status)) {
+      setNotice('Documents can be uploaded after an appointment is confirmed, including after consultation.');
+      return;
+    }
+
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'],
+        copyToCacheDirectory: true,
+        multiple: false,
+      });
+      if (result.canceled || !result.assets?.[0]) return;
+      const asset = result.assets[0];
+      const type = asset.mimeType || (asset.name.toLowerCase().endsWith('.pdf') ? 'application/pdf' : 'image/jpeg');
+      if (!['image/jpeg', 'image/png', 'image/webp', 'application/pdf'].includes(type)) {
+        setNotice('Only JPG, PNG, WEBP images and PDF documents can be uploaded.');
+        return;
+      }
+      if (asset.size && asset.size > 5 * 1024 * 1024) {
+        setNotice('Appointment documents must be 5MB or smaller.');
+        return;
+      }
+
+      setUploadingType(documentType);
+      const savedAppointment = await partnerApi.uploadAppointmentDocument(activeVisitId, documentType, {
+        uri: asset.uri,
+        name: asset.name,
+        type,
+        size: asset.size,
+        file: asset.file,
+      });
+      setAppointments(current => current.map(visit => visit._id === activeVisitId ? { ...visit, ...savedAppointment } : visit));
+      setNotice(`${appointmentDocumentTypes.find(item => item.value === documentType)?.label} uploaded and shared with the patient.`);
+      emitPartnerRefresh('appointments', 'appointment-document-uploaded', savedAppointment);
+      emitPartnerRefresh('notifications', 'appointment-document-uploaded', savedAppointment);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : 'Unable to upload appointment document.');
+    } finally {
+      setUploadingType('');
+    }
   }
 
   return (
@@ -243,6 +299,34 @@ export default function Consultations() {
                   {savingNote ? <ActivityIndicator color="#fff" /> : <Ionicons name={savedNoteId === activeVisitId ? 'checkmark-circle' : 'save-outline'} size={18} color="#fff" />}
                   <Text style={styles.saveText}>{savingNote ? 'Saving notes' : !approved ? 'Verification required' : savedNoteId === activeVisitId ? 'Notes saved' : 'Save notes'}</Text>
                 </TouchableOpacity>
+
+                <View style={styles.documentsSection}>
+                  <Text style={styles.sectionTitle}>Appointment documents</Text>
+                  <Text style={styles.sectionSubtitle}>Upload an image or PDF now or after the consultation.</Text>
+                  <View style={styles.documentButtons}>
+                    {appointmentDocumentTypes.map(item => (
+                      <TouchableOpacity
+                        key={item.value}
+                        style={[styles.documentButton, (!!uploadingType || !approved) && styles.buttonDisabled]}
+                        onPress={() => chooseAndUpload(item.value)}
+                        disabled={!!uploadingType || !approved}
+                      >
+                        {uploadingType === item.value ? <ActivityIndicator color={grad1} /> : <Ionicons name="cloud-upload-outline" size={18} color={grad1} />}
+                        <Text style={styles.documentButtonText}>{item.label}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                  {(activeVisit.clinicalDocuments || []).map((document: any) => (
+                    <TouchableOpacity key={document._id || document.fileUrl} style={styles.uploadedDocument} onPress={() => Linking.openURL(document.fileUrl)}>
+                      <Ionicons name={document.mimeType === 'application/pdf' ? 'document-text-outline' : 'image-outline'} size={19} color={grad1} />
+                      <View style={styles.uploadedDocumentText}>
+                        <Text style={styles.documentButtonText}>{appointmentDocumentTypes.find(item => item.value === document.documentType)?.label || formatStatus(document.documentType)}</Text>
+                        <Text style={styles.sectionSubtitle}>{document.fileName || 'Open document'}</Text>
+                      </View>
+                      <Ionicons name="open-outline" size={17} color={grad1} />
+                    </TouchableOpacity>
+                  ))}
+                </View>
               </>
             )}
           </View>
@@ -271,6 +355,12 @@ const styles = StyleSheet.create({
   layoutWide: { flexDirection: 'row', alignItems: 'flex-start' },
   listPanel: { flex: 1.2, gap: 12 },
   notesPanel: { flex: 1, borderRadius: 18, backgroundColor: '#fff', padding: 14 },
+  documentsSection: { marginTop: 22, gap: 10, borderTopWidth: 1, borderTopColor: 'rgba(8,81,97,0.1)', paddingTop: 18 },
+  documentButtons: { gap: 8 },
+  documentButton: { minHeight: 46, borderRadius: 12, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', gap: 9, backgroundColor: 'rgba(19,162,193,0.09)', borderWidth: 1, borderColor: 'rgba(8,81,97,0.12)' },
+  documentButtonText: { flex: 1, color: '#253D43', fontSize: 13, fontWeight: '900' },
+  uploadedDocument: { minHeight: 52, borderRadius: 12, padding: 10, flexDirection: 'row', alignItems: 'center', gap: 9, backgroundColor: '#F5FAFC' },
+  uploadedDocumentText: { flex: 1, minWidth: 0 },
   sectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
   sectionTitle: { color: '#252525', fontSize: 19, fontWeight: '900' },
   sectionSubtitle: { color: '#58727A', fontSize: 12, fontWeight: '800', marginTop: 3 },
