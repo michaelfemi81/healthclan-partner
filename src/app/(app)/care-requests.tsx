@@ -2,7 +2,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect, useNavigation } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ApiStateCard } from '../../components/api-state';
 import { CardEntryForm } from '../../components/card-entry-form';
@@ -70,9 +70,22 @@ function formatBudget(request: any) {
   return `${currency} ${budget.min ?? budget.max}`.trim();
 }
 
+function formatUnlockPrice(request: any) {
+  const pricing = request?.unlockPricing;
+  const amount = Number(pricing?.amount);
+  if (!Number.isFinite(amount)) return 'Price unavailable';
+  try {
+    return new Intl.NumberFormat(undefined, { style: 'currency', currency: pricing.currency || 'GBP' }).format(amount);
+  } catch {
+    return `${pricing.currency || 'GBP'} ${amount.toFixed(2)}`;
+  }
+}
+
 export default function CareRequests() {
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
+  const isDesktop = width >= 900;
   const [careRequests, setCareRequests] = useState<any[]>([]);
   const [selectedId, setSelectedId] = useState('');
   const [paidRequestIds, setPaidRequestIds] = useState<string[]>([]);
@@ -231,8 +244,8 @@ export default function CareRequests() {
                 style={[styles.requestCard, active && styles.requestCardActive]}
               >
                 <View style={styles.requestTop}>
-                  <View style={styles.requestIcon}>
-                    <Ionicons name={unlocked ? 'people-outline' : 'lock-closed-outline'} size={20} color={grad1} />
+                  <View style={[styles.requestIcon, unlocked ? styles.unlockedIcon : styles.lockedIcon]}>
+                    <Ionicons name={unlocked ? 'lock-open-outline' : 'lock-closed-outline'} size={20} color={unlocked ? '#087A55' : '#B46908'} />
                   </View>
                   <View style={styles.requestText}>
                     <Text style={styles.client}>{requestName(request)}</Text>
@@ -241,27 +254,45 @@ export default function CareRequests() {
                     <Text style={styles.visibleMeta}>Duration: {formatDuration(request)}</Text>
                     <Text style={styles.visibleMeta}>{request.daysPerWeek ? `${request.daysPerWeek} day${Number(request.daysPerWeek) === 1 ? '' : 's'} per week` : 'Days per week not specified'}</Text>
                   </View>
-                  <Text style={styles.amount}>Unlock</Text>
+                  <View style={styles.pricePill}>
+                    <Text style={styles.priceLabel}>{unlocked ? 'PAID' : 'UNLOCK'}</Text>
+                    <Text style={[styles.amount, unlocked && styles.paidAmount]}>{unlocked ? 'Open' : formatUnlockPrice(request)}</Text>
+                  </View>
                 </View>
                 <View style={styles.metaRow}>
                   <Text style={styles.metaText}>{request.createdAt ? new Date(request.createdAt).toLocaleDateString() : 'Recently requested'}</Text>
-                  <Text style={[styles.status, !unlocked && styles.lockedStatus]}>{status}</Text>
+                  <View style={[styles.statusPill, unlocked ? styles.unlockedPill : styles.lockedPill]}>
+                    <Ionicons name={unlocked ? 'lock-open-outline' : 'lock-closed-outline'} size={13} color={unlocked ? '#087A55' : '#B46908'} />
+                    <Text style={[styles.status, !unlocked && styles.lockedStatus]}>{status}</Text>
+                  </View>
                 </View>
               </TouchableOpacity>
             );
           })}
         </View>
 
-        <Text style={styles.sectionTitle}>Request details</Text>
-        <View style={styles.detailCard}>
-          {!selected ? (
-            <ApiStateCard icon="document-lock-outline" title="No request selected" message="Select an open care request to view its locked details." />
-          ) : (
-          <>
+        <Modal visible={Boolean(selected)} transparent animationType={isDesktop ? 'fade' : 'slide'} onRequestClose={() => setSelectedId('')}>
+          <View style={[styles.modalBackdrop, isDesktop && styles.desktopBackdrop]}>
+            <View style={[styles.modalSheet, isDesktop ? styles.desktopModal : styles.mobileModal, { paddingBottom: Math.max(insets.bottom, 18) }]}>
+              <View style={styles.modalHeader}>
+                <View style={styles.modalHeading}>
+                  <Text style={styles.modalKicker}>CARE REQUEST</Text>
+                  <Text style={styles.modalTitle}>{selected ? requestName(selected) : 'Request details'}</Text>
+                </View>
+                <TouchableOpacity accessibilityLabel="Close request details" onPress={() => setSelectedId('')} style={styles.closeButton}>
+                  <Ionicons name="close" size={22} color={grad1} />
+                </TouchableOpacity>
+              </View>
+              <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.modalScroll}>
+                <View style={styles.detailCard}>
+          {selected && <>
           {!selectedUnlocked && (
             <View style={styles.lockNotice}>
               <Ionicons name="lock-closed-outline" size={19} color={grad1} />
-              <Text style={styles.lockNoticeText}>{loadingSelected ? 'Opening care request...' : 'Requester phone and email are hidden. Add a card and pay only when you want to contact this requester.'}</Text>
+              <View style={styles.lockNoticeCopy}>
+                <Text style={styles.lockNoticeTitle}>{formatUnlockPrice(selected)} to unlock</Text>
+                <Text style={styles.lockNoticeText}>{loadingSelected ? 'Opening care request...' : 'Requester phone and email are hidden until payment.'}</Text>
+              </View>
             </View>
           )}
 
@@ -308,7 +339,7 @@ export default function CareRequests() {
                 </View>
                 <View style={styles.paymentText}>
                   <Text style={styles.paymentTitle}>{cardSaved ? 'Payment card ready' : 'Add payment card'}</Text>
-                  <Text style={styles.paymentSubtitle}>{cardSaved ? 'Card will be charged only when you unlock this requester’s contact details' : 'Required before unlocking requester phone and email'}</Text>
+              <Text style={styles.paymentSubtitle}>{cardSaved ? `${formatUnlockPrice(selected)} will be charged when you confirm the unlock` : 'Required before unlocking requester phone and email'}</Text>
                 </View>
                 <Text style={styles.cardStatus}>{cardSaved ? 'Saved' : 'Needed'}</Text>
               </View>
@@ -337,14 +368,17 @@ export default function CareRequests() {
               ) : (
                 <Ionicons name={selectedUnlocked ? 'checkmark-circle-outline' : 'card-outline'} size={18} color="#fff" />
               )}
-              <Text style={styles.payText}>{unlocking ? 'Unlocking contact' : selectedUnlocked ? 'Contact unlocked' : cardSaved ? 'Pay to unlock contact' : 'Add card to unlock contact'}</Text>
+              <Text style={styles.payText}>{unlocking ? 'Unlocking contact' : selectedUnlocked ? 'Contact unlocked' : cardSaved ? `Pay ${formatUnlockPrice(selected)} & unlock` : 'Add card to unlock contact'}</Text>
             </TouchableOpacity>
           </View>
 
           {!!receipt && <Text style={styles.receipt}>{receipt}</Text>}
-          </>
-          )}
-        </View>
+          </>}
+                </View>
+              </ScrollView>
+            </View>
+          </View>
+        </Modal>
       </ScrollView>
     </View>
   );
@@ -365,31 +399,52 @@ function LockedValue({ value, unlocked }: { value: string; unlocked: boolean }) 
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#E9F6FE' },
-  content: { paddingHorizontal: 18 },
+  content: { width: '100%', maxWidth: 1120, alignSelf: 'center', paddingHorizontal: 18 },
   header: { minHeight: 226, borderRadius: 24, padding: 22, justifyContent: 'center' },
   kicker: { color: 'rgba(255,255,255,0.84)', fontSize: 13, fontWeight: '900' },
   title: { color: '#fff', fontSize: 31, lineHeight: 37, fontWeight: '900', marginTop: 8 },
   subtitle: { color: '#fff', fontSize: 15, lineHeight: 22, fontWeight: '700', marginTop: 12, opacity: 0.92 },
   sectionTitle: { color: '#252525', fontSize: 19, fontWeight: '900', marginTop: 22, marginBottom: 12 },
-  requestList: { gap: 10 },
-  requestCard: { borderRadius: 18, backgroundColor: '#fff', padding: 14, borderWidth: 1, borderColor: 'transparent' },
-  requestCardActive: { borderColor: 'rgba(8,81,97,0.24)' },
+  requestList: { gap: 12 },
+  requestCard: { borderRadius: 20, backgroundColor: '#fff', padding: 16, borderWidth: 1, borderColor: 'rgba(8,81,97,0.06)', shadowColor: '#063D49', shadowOffset: { width: 0, height: 5 }, shadowOpacity: 0.06, shadowRadius: 14, elevation: 2 },
+  requestCardActive: { borderColor: 'rgba(8,81,97,0.35)', transform: [{ scale: 0.995 }] },
   requestTop: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  requestIcon: { width: 42, height: 42, borderRadius: 21, backgroundColor: 'rgba(19, 202, 214, 0.12)', alignItems: 'center', justifyContent: 'center' },
+  requestIcon: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
+  lockedIcon: { backgroundColor: '#FFF3DE' },
+  unlockedIcon: { backgroundColor: '#E4F8EF' },
   requestText: { flex: 1, minWidth: 0 },
   client: { color: '#252525', fontSize: 15, fontWeight: '900' },
   blurredName: { minHeight: 37, justifyContent: 'center', gap: 6 },
   blurBar: { height: 9, borderRadius: 999, backgroundColor: 'rgba(88,114,122,0.22)' },
   service: { color: '#58727A', fontSize: 12, fontWeight: '700', marginTop: 4 },
   visibleMeta: { color: grad1, fontSize: 11, lineHeight: 16, fontWeight: '900', marginTop: 3 },
-  amount: { color: grad1, fontSize: 15, fontWeight: '900' },
+  pricePill: { minWidth: 76, borderRadius: 14, backgroundColor: '#F1FAFD', paddingHorizontal: 10, paddingVertical: 8, alignItems: 'flex-end' },
+  priceLabel: { color: '#789098', fontSize: 9, lineHeight: 11, fontWeight: '900', letterSpacing: 0.7 },
+  amount: { color: grad1, fontSize: 14, lineHeight: 18, fontWeight: '900', marginTop: 2 },
+  paidAmount: { color: '#087A55' },
   metaRow: { flexDirection: 'row', justifyContent: 'space-between', gap: 12, marginTop: 12 },
   metaText: { color: '#58727A', fontSize: 12, fontWeight: '800' },
-  status: { color: grad1, fontSize: 12, fontWeight: '900' },
-  lockedStatus: { color: '#C17C12' },
+  statusPill: { flexDirection: 'row', alignItems: 'center', gap: 5, borderRadius: 999, paddingHorizontal: 9, paddingVertical: 5 },
+  lockedPill: { backgroundColor: '#FFF3DE' },
+  unlockedPill: { backgroundColor: '#E4F8EF' },
+  status: { color: '#087A55', fontSize: 11, fontWeight: '900' },
+  lockedStatus: { color: '#B46908' },
+  modalBackdrop: { flex: 1, backgroundColor: 'rgba(3,29,35,0.58)', justifyContent: 'flex-end' },
+  desktopBackdrop: { justifyContent: 'center', alignItems: 'center', padding: 32 },
+  modalSheet: { width: '100%', backgroundColor: '#F7FCFE', overflow: 'hidden' },
+  mobileModal: { maxHeight: '92%', borderTopLeftRadius: 28, borderTopRightRadius: 28 },
+  desktopModal: { maxWidth: 720, maxHeight: '88%', borderRadius: 28, shadowColor: '#001E25', shadowOffset: { width: 0, height: 18 }, shadowOpacity: 0.28, shadowRadius: 40, elevation: 12 },
+  modalHeader: { minHeight: 76, paddingHorizontal: 20, paddingVertical: 15, borderBottomWidth: 1, borderBottomColor: 'rgba(8,81,97,0.08)', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 16 },
+  modalHeading: { flex: 1, minWidth: 0 },
+  modalKicker: { color: grad2, fontSize: 10, fontWeight: '900', letterSpacing: 1.2 },
+  modalTitle: { color: '#18383F', fontSize: 20, lineHeight: 25, fontWeight: '900', marginTop: 3 },
+  closeButton: { width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center', backgroundColor: '#E9F6FE' },
+  modalScroll: { padding: 16 },
   detailCard: { borderRadius: 20, backgroundColor: '#fff', padding: 16 },
   lockNotice: { minHeight: 58, borderRadius: 16, backgroundColor: 'rgba(19, 202, 214, 0.12)', padding: 12, flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 4 },
-  lockNoticeText: { flex: 1, minWidth: 0, color: grad1, fontSize: 12, lineHeight: 17, fontWeight: '900' },
+  lockNoticeCopy: { flex: 1, minWidth: 0 },
+  lockNoticeTitle: { color: grad1, fontSize: 14, lineHeight: 18, fontWeight: '900' },
+  lockNoticeText: { color: '#58727A', fontSize: 11, lineHeight: 16, fontWeight: '800', marginTop: 2 },
   label: { color: grad1, fontSize: 12, fontWeight: '900', marginTop: 12, marginBottom: 6 },
   readonly: { minHeight: 44, borderRadius: 14, backgroundColor: '#E9F6FE', color: '#252525', fontSize: 14, fontWeight: '800', paddingHorizontal: 12, paddingTop: 12 },
   lockedValue: { justifyContent: 'center', gap: 7, paddingTop: 0 },
