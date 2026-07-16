@@ -11,6 +11,7 @@ import { partnerApi } from '../../lib/api';
 
 const grad1 = '#085161';
 const grad2 = '#11a2c1';
+const DEFAULT_UNLOCK_PRICE = { amount: 10, currency: 'GBP' };
 
 function requestTimestamp(request: any) {
   const raw = request?.createdAt || request?.updatedAt || request?.requestedAt || request?.date;
@@ -71,9 +72,11 @@ function formatBudget(request: any) {
 }
 
 function formatUnlockPrice(request: any) {
-  const pricing = request?.unlockPricing;
+  // Keep the price visible while older API deployments are rolling forward.
+  // This mirrors the backend's default lead-unlock charge.
+  const pricing = request?.unlockPricing || DEFAULT_UNLOCK_PRICE;
   const amount = Number(pricing?.amount);
-  if (!Number.isFinite(amount)) return 'Price unavailable';
+  if (!Number.isFinite(amount)) return '£10.00';
   try {
     return new Intl.NumberFormat(undefined, { style: 'currency', currency: pricing.currency || 'GBP' }).format(amount);
   } catch {
