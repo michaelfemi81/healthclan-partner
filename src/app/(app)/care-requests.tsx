@@ -54,21 +54,9 @@ function detailText(value: unknown, fallback = 'Not provided') {
   return String(value || '').trim() || fallback;
 }
 
-function requestName(request: any) {
-  return request?.patientName || request?.careRecipient?.name || request?.contact?.name || 'HealthClan patient';
-}
-
 function formatChoice(value: unknown, fallback = 'Not provided') {
   const text = detailText(value, fallback);
   return text === fallback ? text : text.replace(/_/g, ' ').replace(/\b\w/g, character => character.toUpperCase());
-}
-
-function formatBudget(request: any) {
-  const budget = request?.budget;
-  if (!budget || (budget.min == null && budget.max == null)) return 'Not provided';
-  const currency = budget.currency || '';
-  if (budget.min != null && budget.max != null) return `${currency} ${budget.min} – ${budget.max}`.trim();
-  return `${currency} ${budget.min ?? budget.max}`.trim();
 }
 
 function formatUnlockPrice(request: any) {
@@ -251,8 +239,7 @@ export default function CareRequests() {
                     <Ionicons name={unlocked ? 'lock-open-outline' : 'lock-closed-outline'} size={20} color={unlocked ? '#087A55' : '#B46908'} />
                   </View>
                   <View style={styles.requestText}>
-                    <Text style={styles.client}>{requestName(request)}</Text>
-                    <Text style={styles.service}>{request.careType || request.serviceType || 'Home care support'}</Text>
+                    <Text style={styles.client}>{formatChoice(request.careType || request.serviceType, 'Home care support')}</Text>
                     <Text style={styles.visibleMeta}>{formatPreferredDate(request)}</Text>
                     <Text style={styles.visibleMeta}>Duration: {formatDuration(request)}</Text>
                     <Text style={styles.visibleMeta}>{request.daysPerWeek ? `${request.daysPerWeek} day${Number(request.daysPerWeek) === 1 ? '' : 's'} per week` : 'Days per week not specified'}</Text>
@@ -263,7 +250,6 @@ export default function CareRequests() {
                   </View>
                 </View>
                 <View style={styles.metaRow}>
-                  <Text style={styles.metaText}>{request.createdAt ? new Date(request.createdAt).toLocaleDateString() : 'Recently requested'}</Text>
                   <View style={[styles.statusPill, unlocked ? styles.unlockedPill : styles.lockedPill]}>
                     <Ionicons name={unlocked ? 'lock-open-outline' : 'lock-closed-outline'} size={13} color={unlocked ? '#087A55' : '#B46908'} />
                     <Text style={[styles.status, !unlocked && styles.lockedStatus]}>{status}</Text>
@@ -280,7 +266,7 @@ export default function CareRequests() {
               <View style={styles.modalHeader}>
                 <View style={styles.modalHeading}>
                   <Text style={styles.modalKicker}>CARE REQUEST</Text>
-                  <Text style={styles.modalTitle}>{selected ? requestName(selected) : 'Request details'}</Text>
+                  <Text style={styles.modalTitle}>{selected ? formatChoice(selected.careType || selected.serviceType, 'Request details') : 'Request details'}</Text>
                 </View>
                 <TouchableOpacity accessibilityLabel="Close request details" onPress={() => setSelectedId('')} style={styles.closeButton}>
                   <Ionicons name="close" size={22} color={grad1} />
@@ -299,15 +285,9 @@ export default function CareRequests() {
             </View>
           )}
 
-          <Text style={styles.label}>Client</Text>
-          <Text style={styles.readonly}>{requestName(selected)}</Text>
-          <Text style={styles.label}>Care requested for</Text>
-          <Text style={styles.readonly}>{formatChoice(selected?.careFor)}</Text>
           <Text style={styles.label}>Care type</Text>
           <Text style={styles.readonly}>{formatChoice(selected?.careType || selected?.serviceType)}</Text>
-          <Text style={styles.label}>Urgency</Text>
-          <Text style={styles.readonly}>{formatChoice(selected?.urgency)}</Text>
-          <Text style={styles.label}>Preferred date</Text>
+          <Text style={styles.label}>When care is needed</Text>
           <Text style={styles.readonly}>{formatPreferredDate(selected)}</Text>
           <Text style={styles.label}>Duration</Text>
           <Text style={styles.readonly}>{formatDuration(selected)}</Text>
@@ -317,22 +297,14 @@ export default function CareRequests() {
           <Text style={styles.readonly}>{detailText(selected?.dateOfBirth)}</Text>
           <Text style={styles.label}>Chronic illnesses</Text>
           <Text style={styles.readonly}>{detailText(selected?.chronicIllnesses, 'None provided')}</Text>
-          <Text style={styles.label}>Start and end time</Text>
-          <Text style={styles.readonly}>{selected?.startTime || selected?.endTime ? [selected.startTime, selected.endTime].filter(Boolean).join(' – ') : 'Not provided'}</Text>
+          <Text style={styles.label}>Email address</Text>
+          <LockedValue value={selected?.contact?.email || 'Hidden'} unlocked={selectedUnlocked} />
+          <Text style={styles.label}>Phone number</Text>
+          <LockedValue value={selected?.contact?.phone || 'Hidden'} unlocked={selectedUnlocked} />
           <Text style={styles.label}>Care location</Text>
           <Text style={styles.readonly}>{detailText(selected?.location)}</Text>
-          <Text style={styles.label}>Budget</Text>
-          <Text style={styles.readonly}>{formatBudget(selected)}</Text>
           <Text style={styles.label}>Care notes</Text>
           <Text style={styles.readonly}>{detailText(selected?.notes || selected?.description)}</Text>
-          <Text style={styles.label}>Requester</Text>
-          <Text style={styles.readonly}>{selected?.contact?.name || 'Requester'}</Text>
-          <Text style={styles.label}>Preferred contact method</Text>
-          <Text style={styles.readonly}>{formatChoice(selected?.contact?.preferredMethod)}</Text>
-          <Text style={styles.label}>Requester phone</Text>
-          <LockedValue value={selected?.contact?.phone || 'Hidden'} unlocked={selectedUnlocked} />
-          <Text style={styles.label}>Requester email</Text>
-          <LockedValue value={selected?.contact?.email || 'Hidden'} unlocked={selectedUnlocked} />
 
           {!selectedUnlocked && (
             <View style={styles.paymentBox}>
@@ -419,14 +391,12 @@ const styles = StyleSheet.create({
   client: { color: '#252525', fontSize: 15, fontWeight: '900' },
   blurredName: { minHeight: 37, justifyContent: 'center', gap: 6 },
   blurBar: { height: 9, borderRadius: 999, backgroundColor: 'rgba(88,114,122,0.22)' },
-  service: { color: '#58727A', fontSize: 12, fontWeight: '700', marginTop: 4 },
   visibleMeta: { color: grad1, fontSize: 11, lineHeight: 16, fontWeight: '900', marginTop: 3 },
   pricePill: { minWidth: 76, borderRadius: 14, backgroundColor: '#F1FAFD', paddingHorizontal: 10, paddingVertical: 8, alignItems: 'flex-end' },
   priceLabel: { color: '#789098', fontSize: 9, lineHeight: 11, fontWeight: '900', letterSpacing: 0.7 },
   amount: { color: grad1, fontSize: 14, lineHeight: 18, fontWeight: '900', marginTop: 2 },
   paidAmount: { color: '#087A55' },
-  metaRow: { flexDirection: 'row', justifyContent: 'space-between', gap: 12, marginTop: 12 },
-  metaText: { color: '#58727A', fontSize: 12, fontWeight: '800' },
+  metaRow: { flexDirection: 'row', justifyContent: 'flex-end', gap: 12, marginTop: 12 },
   statusPill: { flexDirection: 'row', alignItems: 'center', gap: 5, borderRadius: 999, paddingHorizontal: 9, paddingVertical: 5 },
   lockedPill: { backgroundColor: '#FFF3DE' },
   unlockedPill: { backgroundColor: '#E4F8EF' },
