@@ -4,7 +4,7 @@ import { CameraView, useCameraPermissions, useMicrophonePermissions } from 'expo
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, useLocalSearchParams, useNavigation } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Image, Linking, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, AppState, Image, Linking, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { WebView } from 'react-native-webview';
 import { ApiStateCard } from '../../components/api-state';
@@ -142,7 +142,7 @@ function videoRoomHtml(session: VideoSession) {
     html, body, #room { margin: 0; width: 100%; height: 100%; background: #0b2026; overflow: hidden; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
     #room { position: relative; display: flex; align-items: center; justify-content: center; color: white; }
     #remote { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: #0b2026; }
-    #local { display: none; }
+    #local { position: absolute; right: 12px; bottom: 12px; width: 34%; max-width: 150px; height: 27%; min-height: 92px; border: 2px solid white; border-radius: 14px; overflow: hidden; background: #173a42; z-index: 2; }
     video { width: 100%; height: 100%; object-fit: cover; }
     #status { position: absolute; top: 14px; left: 14px; right: 14px; z-index: 3; color: rgba(255,255,255,.9); font-size: 13px; font-weight: 800; text-align: center; }
   </style>
@@ -162,20 +162,75 @@ function videoRoomHtml(session: VideoSession) {
     const remote = document.getElementById('remote');
     let activeRoom;
     let localStream;
+    let localAudioTrack;
+    let localVideoTrack;
+    const attachedElements = new Map();
+    const playbackTimers = new Set();
 
     function send(type, payload) {
       window.ReactNativeWebView && window.ReactNativeWebView.postMessage(JSON.stringify({ type, payload }));
     }
 
-    function attachTrack(track, container) {
-      if (!track || !track.attach) return;
-      const element = track.attach();
+    function trackKey(track) {
+      return track.sid || (track.mediaStreamTrack && track.mediaStreamTrack.id) || track.name || track.kind;
+    }
+
+    function ensurePlayback(element, attempts = 8) {
+      if (!element || typeof element.play !== 'function') return;
+      const play = () => {
+        const result = element.play();
+        if (result && result.catch && attempts > 0) result.catch(() => {
+          const timer = setTimeout(() => {
+            playbackTimers.delete(timer);
+            ensurePlayback(element, attempts - 1);
+          }, 350);
+          playbackTimers.add(timer);
+        });
+      };
+      if (element.readyState >= 2) play();
+      else element.addEventListener('canplay', play, { once: true });
+    }
+
+    function prepareVideo(element, muted) {
       element.setAttribute('playsinline', 'true');
+      element.setAttribute('webkit-playsinline', 'true');
+      element.autoplay = true;
+      element.playsInline = true;
+      element.muted = Boolean(muted);
+      element.onloadedmetadata = () => ensurePlayback(element);
+      element.oncanplay = () => ensurePlayback(element);
+      element.onpause = () => !document.hidden && element.isConnected && ensurePlayback(element, 3);
+    }
+
+    function attachTrack(track, container, isLocal = false) {
+      if (!track || !track.attach) return;
+      const key = (isLocal ? 'local:' : 'remote:') + trackKey(track);
+      const previous = attachedElements.get(key);
+      if (previous && previous.isConnected) {
+        ensurePlayback(previous);
+        return;
+      }
+      const element = track.attach();
+      attachedElements.set(key, element);
+      if (track.kind === 'video') {
+        prepareVideo(element, isLocal);
+        container.querySelectorAll('video').forEach(existing => existing.remove());
+      } else {
+        element.autoplay = true;
+        element.style.display = 'none';
+      }
       container.appendChild(element);
+      ensurePlayback(element);
+      track.on && track.on('started', () => ensurePlayback(element));
+      track.on && track.on('switchedOn', () => ensurePlayback(element));
+      track.on && track.on('enabled', () => ensurePlayback(element));
     }
 
     function detachTrack(track) {
       if (!track || !track.detach) return;
+      attachedElements.forEach((element, key) => {
+        if (key.endsWith(trackKey(track))) attachedElements.delete(key);
+      });
       track.detach().forEach(element => element.remove());
     }
 
@@ -183,6 +238,11 @@ function videoRoomHtml(session: VideoSession) {
       participant.tracks.forEach(publication => publication.track && attachTrack(publication.track, remote));
       participant.on('trackSubscribed', track => attachTrack(track, remote));
       participant.on('trackUnsubscribed', detachTrack);
+      participant.on('trackPublished', publication => {
+        if (publication.track) attachTrack(publication.track, remote);
+        publication.on && publication.on('subscribed', track => attachTrack(track, remote));
+      });
+      participant.on('trackUnpublished', publication => publication.track && detachTrack(publication.track));
     }
 
     function setLocalTracks(kind, enabled) {
@@ -248,21 +308,24 @@ function videoRoomHtml(session: VideoSession) {
         localStream = await getStableLocalMedia();
         local.innerHTML = '';
         const preview = document.createElement('video');
-        preview.autoplay = true;
-        preview.muted = true;
-        preview.playsInline = true;
+        prepareVideo(preview, true);
         preview.srcObject = localStream;
         local.appendChild(preview);
+        ensurePlayback(preview);
         send('preview');
         if (!localStream.getAudioTracks().length) send('audio-unavailable');
         if (!localStream.getVideoTracks().length) throw new Error('Camera did not start. Please allow camera access and try again.');
 
+        const audioTrack = localStream.getAudioTracks()[0];
+        const videoTrack = localStream.getVideoTracks()[0];
+        if (audioTrack) localAudioTrack = new window.Twilio.Video.LocalAudioTrack(audioTrack);
+        localVideoTrack = new window.Twilio.Video.LocalVideoTrack(videoTrack);
         activeRoom = await window.Twilio.Video.connect(token, {
           name: roomName,
-          tracks: localStream.getTracks()
+          tracks: [localAudioTrack, localVideoTrack].filter(Boolean)
         });
         local.innerHTML = '';
-        activeRoom.localParticipant.tracks.forEach(publication => publication.track && attachTrack(publication.track, local));
+        activeRoom.localParticipant.tracks.forEach(publication => publication.track && attachTrack(publication.track, local, true));
         activeRoom.participants.forEach(attachParticipant);
         activeRoom.on('participantConnected', attachParticipant);
         activeRoom.on('participantDisconnected', participant => {
@@ -280,8 +343,16 @@ function videoRoomHtml(session: VideoSession) {
 
     window.addEventListener('beforeunload', () => {
       activeRoom && activeRoom.disconnect();
+      localAudioTrack && localAudioTrack.stop();
+      localVideoTrack && localVideoTrack.stop();
       localStream && localStream.getTracks().forEach(track => track.stop());
+      playbackTimers.forEach(timer => clearTimeout(timer));
     });
+    window.healthclanResumeVideo = () => document.querySelectorAll('video').forEach(element => ensurePlayback(element));
+    document.addEventListener('visibilitychange', () => !document.hidden && window.healthclanResumeVideo());
+    window.addEventListener('focus', () => window.healthclanResumeVideo());
+    window.addEventListener('pageshow', () => window.healthclanResumeVideo());
+    document.addEventListener('touchstart', () => window.healthclanResumeVideo(), { passive: true });
     start();
   </script>
 </body>
@@ -315,6 +386,15 @@ function attachPreviewStream(stream: any) {
   video.style.objectFit = 'cover';
   video.style.borderRadius = '14px';
   container.appendChild(video);
+  ensureBrowserMediaPlayback(video);
+}
+
+function ensureBrowserMediaPlayback(element: HTMLMediaElement, attempts = 8) {
+  const play = () => element.play?.().catch?.(() => {
+    if (attempts > 0 && element.isConnected) window.setTimeout(() => ensureBrowserMediaPlayback(element, attempts - 1), 350);
+  });
+  if (element.readyState >= 2) play();
+  else element.addEventListener('canplay', play, { once: true });
 }
 
 function attachTrack(track: any, containerId: string) {
@@ -323,11 +403,24 @@ function attachTrack(track: any, containerId: string) {
   if (!container) return;
   const element = track.attach();
   element.setAttribute('playsinline', 'true');
+  element.autoplay = true;
+  element.playsInline = true;
+  if (track.kind === 'video') {
+    element.muted = containerId === LOCAL_MEDIA_ID;
+    container.querySelectorAll('video').forEach(existing => existing.remove());
+    element.onpause = () => !document.hidden && element.isConnected && ensureBrowserMediaPlayback(element, 3);
+  } else {
+    element.style.display = 'none';
+  }
   element.style.width = '100%';
   element.style.height = '100%';
   element.style.objectFit = 'cover';
   element.style.borderRadius = '14px';
   container.appendChild(element);
+  ensureBrowserMediaPlayback(element);
+  track.on?.('started', () => ensureBrowserMediaPlayback(element));
+  track.on?.('switchedOn', () => ensureBrowserMediaPlayback(element));
+  track.on?.('enabled', () => ensureBrowserMediaPlayback(element));
 }
 
 function detachTrack(track: any) {
@@ -341,6 +434,10 @@ function attachParticipant(participant: any, containerId: string) {
   });
   participant.on?.('trackSubscribed', (track: any) => attachTrack(track, containerId));
   participant.on?.('trackUnsubscribed', detachTrack);
+  participant.on?.('trackPublished', (publication: any) => {
+    if (publication.track) attachTrack(publication.track, containerId);
+    publication.on?.('subscribed', (track: any) => attachTrack(track, containerId));
+  });
 }
 
 function attachParticipantTracks(participant: any, containerId: string) {
@@ -410,6 +507,32 @@ export default function VideoRoom() {
   const canUseCamera = approved && isAppointmentJoinable(activeVisit);
   const canEditNotes = approved && Boolean(activeVisitId) && ['confirmed', 'accepted', 'scheduled', 'completed'].includes(String(activeVisit?.status || '').toLowerCase());
   const unavailableMessage = appointmentAvailabilityMessage(activeVisit, approved);
+
+  useEffect(() => {
+    if (Platform.OS === 'web') return;
+    const subscription = AppState.addEventListener('change', state => {
+      if (state === 'active') {
+        roomWebViewRef.current?.injectJavaScript?.('window.healthclanResumeVideo && window.healthclanResumeVideo(); true;');
+      }
+    });
+    return () => subscription.remove();
+  }, []);
+
+  useEffect(() => {
+    if (Platform.OS !== 'web' || typeof document === 'undefined') return;
+    const resumeVideo = () => {
+      if (document.hidden) return;
+      document.querySelectorAll<HTMLMediaElement>('video, audio').forEach(element => ensureBrowserMediaPlayback(element));
+    };
+    document.addEventListener('visibilitychange', resumeVideo);
+    window.addEventListener('focus', resumeVideo);
+    window.addEventListener('pageshow', resumeVideo);
+    return () => {
+      document.removeEventListener('visibilitychange', resumeVideo);
+      window.removeEventListener('focus', resumeVideo);
+      window.removeEventListener('pageshow', resumeVideo);
+    };
+  }, []);
 
   useEffect(() => {
     navigation.setOptions({ headerShown: false });
@@ -854,18 +977,6 @@ export default function VideoRoom() {
               }
             }}
           />
-          {canShowNativeCamera && (
-            <View style={[styles.nativeLocalPreview, expanded && styles.fullscreenNativeLocalPreview]}>
-              <CameraView
-                active
-                facing="front"
-                mirror
-                mode="video"
-                mute
-                style={styles.nativeLocalCamera}
-              />
-            </View>
-          )}
           {((mobileRoomLoading && !mobileRoomPreviewReady) || mobileRoomError) && (
             <View pointerEvents="none" style={styles.mobileRoomOverlay}>
               {mobileRoomLoading ? <ActivityIndicator color="#fff" /> : <Ionicons name={mobileRoomError ? 'alert-circle-outline' : 'videocam-outline'} size={34} color="#fff" />}
